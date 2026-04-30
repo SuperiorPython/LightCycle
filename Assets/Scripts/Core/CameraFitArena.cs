@@ -4,7 +4,7 @@ using UnityEngine;
 public class CameraFitArena : MonoBehaviour
 {
     public ArenaGrid arena;
-    public float padding = 1.0f; // extra space around arena
+    public float padding = 0.5f; // extra space around arena
 
     void Start()
     {

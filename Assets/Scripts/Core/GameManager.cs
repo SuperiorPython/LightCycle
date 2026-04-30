@@ -1,4 +1,7 @@
+﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using static UnityEngine.EventSystems.EventTrigger;
 
 // =============================================================================
 //  AIController.cs  —  Member 2: AI Enhancements
@@ -81,11 +84,28 @@ using UnityEngine;
 //
 // =============================================================================
 
+public enum GameState
+{
+    Title,
+    Difficulty,
+    Countdown,
+    Playing,
+    GameOver,
+    Win
+}
+
 public class GameManager : MonoBehaviour
 {
     [Header("Refs")]
     public ArenaGrid arena;
-    public BikeController[] bikes; // Set size = 6 (Player + 5 AI) in Inspector
+    public BikeController[] bikes;
+
+    [Header("UI")]
+    public TitleUI titleUI;
+    public DifficultyUI difficultyUI;
+    public GameOverUI gameOverUI;
+    public WinUI winUI;
+    public CountdownUI countdownUI;
 
     [Header("Scoring")]
     public int killPoints = 50;
@@ -94,43 +114,116 @@ public class GameManager : MonoBehaviour
     private bool[] dead;
 
     [Header("Match State")]
-    public bool matchOver = false;
+    public GameState state = GameState.Title;
+
+    [Header("Difficulty")]
+    public AIController.Difficulty selectedDifficulty = AIController.Difficulty.Medium;
+
+    [Header("Countdown")]
+    public float countdownSeconds = 3f;
 
     [Header("Spawn Tuning")]
     public int spawnRadius = 12;
 
     void Start()
     {
-        // init arrays
         score = new int[bikes.Length];
         dead = new bool[bikes.Length];
 
-        StartMatch();
+        SetState(GameState.Title);
+    }
+
+    public void SetState(GameState newState)
+    {
+        state = newState;
+
+        HideAllUI();
+
+        switch (state)
+        {
+            case GameState.Title:
+                Time.timeScale = 0f;
+                FreezeAllBikes();
+
+                if (titleUI != null)
+                    titleUI.Show();
+                break;
+
+            case GameState.Difficulty:
+                Time.timeScale = 0f;
+                FreezeAllBikes();
+
+                if (difficultyUI != null)
+                    difficultyUI.Show();
+                break;
+
+            case GameState.Countdown:
+                Time.timeScale = 1f;
+                StartMatch();
+                StartCoroutine(StartCountdown());
+                break;
+
+            case GameState.Playing:
+                Time.timeScale = 1f;
+                EnableAliveBikes();
+                break;
+
+            case GameState.GameOver:
+                Time.timeScale = 0f;
+                FreezeAllBikes();
+
+                if (gameOverUI != null)
+                    gameOverUI.Show();
+                break;
+
+            case GameState.Win:
+                Time.timeScale = 0f;
+                FreezeAllBikes();
+
+                if (winUI != null)
+                    winUI.Show();
+                break;
+        }
+    }
+
+    IEnumerator StartCountdown()
+    {
+        FreezeAllBikes();
+
+        if (countdownUI != null)
+            yield return countdownUI.PlayCountdown(countdownSeconds);
+
+        SetState(GameState.Playing);
+    }
+
+    void HideAllUI()
+    {
+        if (titleUI != null) titleUI.Hide();
+        if (difficultyUI != null) difficultyUI.Hide();
+        if (gameOverUI != null) gameOverUI.Hide();
+        if (winUI != null) winUI.Hide();
+        if (countdownUI != null) countdownUI.Hide();
     }
 
     public void StartMatch()
     {
-        matchOver = false;
-
-        // reset scores/deaths (comment out score reset if you want persistent match scoring)
         for (int i = 0; i < bikes.Length; i++)
         {
             score[i] = 0;
             dead[i] = false;
         }
 
-        // reset arena + clear all trails
         arena.Clear();
+
         for (int i = 0; i < bikes.Length; i++)
         {
             if (bikes[i] != null && bikes[i].trailManager != null)
                 bikes[i].trailManager.ClearAll();
         }
 
-        // auto-wire IDs + refs + control flags + trail ownership
         for (int i = 0; i < bikes.Length; i++)
         {
-            var b = bikes[i];
+            BikeController b = bikes[i];
             if (b == null) continue;
 
             b.bikeId = i;
@@ -138,12 +231,10 @@ public class GameManager : MonoBehaviour
             b.gameManager = this;
             b.isPlayer = (i == 0);
 
-            // IMPORTANT: needed for elimination credit (ArenaGrid owner tracking)
             if (b.trailManager != null)
                 b.trailManager.ownerId = i;
         }
 
-        // spawn everyone
         Vector2Int[] spawns = GenerateSpawns(bikes.Length);
         Vector2Int[] dirs = GenerateDirs(bikes.Length);
 
@@ -153,67 +244,81 @@ public class GameManager : MonoBehaviour
             bikes[i].Respawn(spawns[i], dirs[i]);
         }
 
-        // ── NEW: wire opponents into each AIController ──────
-        for (int i = 0; i < bikes.Length; i++)
+        ApplyAIDifficulty();
+        WireAIOpponents();
+    }
+
+    void ApplyAIDifficulty()
+    {
+        for (int i = 1; i < bikes.Length; i++)
         {
-            var ai = bikes[i]?.GetComponent<AIController>();
+            if (bikes[i] == null) continue;
+
+            AIController ai = bikes[i].GetComponent<AIController>();
             if (ai == null) continue;
 
-            var others = new System.Collections.Generic.List<BikeController>();
+            ai.difficulty = selectedDifficulty;
+        }
+    }
+
+    void WireAIOpponents()
+    {
+        for (int i = 0; i < bikes.Length; i++)
+        {
+            AIController ai = bikes[i]?.GetComponent<AIController>();
+            if (ai == null) continue;
+
+            List<BikeController> others = new List<BikeController>();
+
             for (int j = 0; j < bikes.Length; j++)
-                if (j != i && bikes[j] != null) others.Add(bikes[j]);
+            {
+                if (j != i && bikes[j] != null)
+                    others.Add(bikes[j]);
+            }
 
             ai.SetOpponents(others.ToArray());
         }
     }
 
-    // Called by BikeController each successful step
     public void AddSurvivalPoint(int bikeId, int amount)
     {
-        if (matchOver) return;
+        if (state != GameState.Playing) return;
         if (bikeId < 0 || bikeId >= score.Length) return;
-
-        // Only alive bikes accrue survival
         if (dead[bikeId]) return;
 
-        score[bikeId] += amount;
+        int scaled = Mathf.RoundToInt(amount * GetDifficultyMultiplier());
+        score[bikeId] += scaled;
     }
 
-    // Called by BikeController when it crashes
     public void OnBikeCrashed(BikeController victim, int killerId)
     {
-        if (matchOver) return;
+        if (state != GameState.Playing) return;
         if (victim == null) return;
 
         int victimId = victim.bikeId;
         if (victimId < 0 || victimId >= bikes.Length) return;
-
-        // If already dead, ignore duplicate crash calls
         if (dead[victimId]) return;
 
-        // mark dead (this is what your UI will use to lock + turn red)
         dead[victimId] = true;
 
-        // award kill points (only if someone else owns the cell)
         if (killerId >= 0 && killerId < score.Length && killerId != victimId)
-            score[killerId] += killPoints;
+        {
+            int scaledKill = Mathf.RoundToInt(killPoints * GetDifficultyMultiplier());
+            score[killerId] += scaledKill;
+        }
 
-        // delete dead trails (your choice) � clears visuals and, if your TrailManager tracks cells,
-        // also frees those cells in the ArenaGrid
         if (victim.trailManager != null)
             victim.trailManager.ClearAll();
 
-        // player died => lose
         if (victimId == 0)
         {
-            matchOver = true;
             Debug.Log("GAME OVER: Player died");
-            FreezeAllBikes();
+            SetState(GameState.GameOver);
             return;
         }
 
-        // if all AIs dead => win
         bool anyAIAlive = false;
+
         for (int i = 1; i < bikes.Length; i++)
         {
             if (!dead[i])
@@ -225,32 +330,149 @@ public class GameManager : MonoBehaviour
 
         if (!anyAIAlive)
         {
-            matchOver = true;
             Debug.Log("YOU WIN: All AIs eliminated");
-            FreezeAllBikes();
+            SetState(GameState.Win);
         }
     }
 
     void FreezeAllBikes()
     {
         for (int i = 0; i < bikes.Length; i++)
+        {
             if (bikes[i] != null)
                 bikes[i].enabled = false;
+        }
     }
 
-    // ---------- UI Helpers (used by your ScoreUI reordering/locking) ----------
+    void EnableAliveBikes()
+    {
+        for (int i = 0; i < bikes.Length; i++)
+        {
+            if (bikes[i] != null && !dead[i])
+                bikes[i].enabled = true;
+        }
+    }
+
+    public void PlayFromTitle()
+    {
+        SetState(GameState.Difficulty);
+    }
+
+    public void SelectDifficulty(AIController.Difficulty difficulty)
+    {
+        selectedDifficulty = difficulty;
+        SetState(GameState.Countdown);
+    }
+
+    public void Retry()
+    {
+        SetState(GameState.Difficulty);
+    }
+
+    public void ReturnToTitle()
+    {
+        SetState(GameState.Title);
+    }
+
+    public void QuitGame()
+    {
+        Application.Quit();
+    }
+
     public int BikeCount => score?.Length ?? 0;
 
-    public int GetScore(int id) =>
-        (score != null && id >= 0 && id < score.Length) ? score[id] : 0;
+    public int GetScore(int id)
+    {
+        return score != null && id >= 0 && id < score.Length ? score[id] : 0;
+    }
 
-    public bool IsDead(int id) =>
-        (dead != null && id >= 0 && id < dead.Length) && dead[id];
+    public bool IsDead(int id)
+    {
+        return dead != null && id >= 0 && id < dead.Length && dead[id];
+    }
 
-    public string GetLabel(int id) =>
-        (id == 0) ? "Player" : $"AI {id}";
+    public string GetLabel(int id)
+    {
+        string[] names =
+        {
+        "Blue (Player)",
+        "Red",
+        "Green",
+        "Yellow",
+        "Pink",
+        "Orange"
+    };
 
-    // ---------- Spawn Helpers (Player + 5 AI = 6 total) ----------
+        if (id >= 0 && id < names.Length)
+            return names[id];
+
+        return $"Bike {id}";
+    }
+
+    public string FinalScoreString()
+    {
+
+        if (score == null) return "";
+
+        string[] colorHex =
+        {
+        "#00BFFF", // Blue / Player
+        "#FF4444", // Red
+        "#00FF7F", // Green
+        "#FFD700", // Yellow
+        "#FF69B4", // Pink
+        "#FFA500"  // Orange
+    };
+
+        List<(int id, int score)> list = new List<(int id, int score)>();
+
+        for (int i = 0; i < score.Length; i++)
+            list.Add((i, score[i]));
+
+        // highest score first
+        list.Sort((a, b) => b.score.CompareTo(a.score));
+
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        sb.AppendLine($"<b>Difficulty: {selectedDifficulty}</b>\n");
+
+        bool first = true;
+
+        foreach (var entry in list)
+        {
+            string label = GetLabel(entry.id);
+            string status = IsDead(entry.id) ? "DEAD" : "ALIVE";
+
+            string coloredLabel = label;
+
+            if (entry.id >= 0 && entry.id < colorHex.Length)
+                coloredLabel = $"<color={colorHex[entry.id]}>{label}</color>";
+
+            if (first)
+            {
+                sb.AppendLine($"★ {coloredLabel}: {entry.score} ({status})");
+                first = false;
+            }
+            else
+            {
+                sb.AppendLine($"{coloredLabel}: {entry.score} ({status})");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    float GetDifficultyMultiplier()
+    {
+        switch (selectedDifficulty)
+        {
+            case AIController.Difficulty.Easy: return 0.75f;
+            case AIController.Difficulty.Medium: return 1.0f;
+            case AIController.Difficulty.Hard: return 1.4f;
+            case AIController.Difficulty.Elite: return 1.8f;
+            default: return 1.0f;
+        }
+    }
+
     Vector2Int[] GenerateSpawns(int n)
     {
         Vector2Int[] s = new Vector2Int[n];
@@ -258,19 +480,17 @@ public class GameManager : MonoBehaviour
         int cx = arena.width / 2;
         int cy = arena.height / 2;
 
-        // Player in center
         s[0] = new Vector2Int(cx, cy);
 
         int r = Mathf.Max(6, spawnRadius);
 
-        // 5 AI spawn points around player
         Vector2Int[] ring =
         {
-            new Vector2Int(cx + r, cy),      // right
-            new Vector2Int(cx - r, cy),      // left
-            new Vector2Int(cx, cy + r),      // up
-            new Vector2Int(cx, cy - r),      // down
-            new Vector2Int(cx + r, cy + r),  // up-right
+            new Vector2Int(cx + r, cy),
+            new Vector2Int(cx - r, cy),
+            new Vector2Int(cx, cy + r),
+            new Vector2Int(cx, cy - r),
+            new Vector2Int(cx + r, cy + r),
         };
 
         for (int i = 1; i < n; i++)
@@ -283,14 +503,13 @@ public class GameManager : MonoBehaviour
     {
         Vector2Int[] d = new Vector2Int[n];
 
-        d[0] = Vector2Int.right; // player
+        d[0] = Vector2Int.right;
 
-        // AIs face away from center-ish to reduce instant collisions
-        if (n > 1) d[1] = Vector2Int.right; // right spawn -> go right
-        if (n > 2) d[2] = Vector2Int.left;  // left spawn  -> go left
-        if (n > 3) d[3] = Vector2Int.up;    // up spawn    -> go up
-        if (n > 4) d[4] = Vector2Int.down;  // down spawn  -> go down
-        if (n > 5) d[5] = Vector2Int.up;    // up-right spawn -> go up (or right)
+        if (n > 1) d[1] = Vector2Int.right;
+        if (n > 2) d[2] = Vector2Int.left;
+        if (n > 3) d[3] = Vector2Int.up;
+        if (n > 4) d[4] = Vector2Int.down;
+        if (n > 5) d[5] = Vector2Int.up;
 
         return d;
     }
