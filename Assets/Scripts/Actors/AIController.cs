@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 // ─────────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@ public class AIController : MonoBehaviour
     public Difficulty difficulty = Difficulty.Medium;
 
     static readonly float[] MistakeChance = { 0.55f, 0.25f, 0.08f, 0.0f };
-    static readonly int[]   FillDepth     = { 40,    80,    120,   200  };
+    static readonly int[] FillDepth = { 40, 80, 120, 200 };
 
     // ── 2. PERSONALITY ───────────────────────────────────────
     public enum Personality { Balanced, Rusher, Coward, Trapper }
@@ -26,7 +26,7 @@ public class AIController : MonoBehaviour
     // ── 3. REFS ──────────────────────────────────────────────
     [Header("Refs")]
     public BikeController bike;
-    public ArenaGrid      arena;
+    public ArenaGrid arena;
     public BikeController[] opponents; // wired by GameManager.StartMatch()
 
     // ── Internal state ───────────────────────────────────────
@@ -34,7 +34,7 @@ public class AIController : MonoBehaviour
     AIState state;
 
     float[,] heatmap;
-    int      heatTick;
+    int heatTick;
 
     // ─────────────────────────────────────────────────────────
     void Reset() { bike = GetComponent<BikeController>(); }
@@ -48,12 +48,12 @@ public class AIController : MonoBehaviour
         // Rebake heatmap every 4 frames
         if (heatTick++ % 4 == 0) BakeHeatmap();
 
-        Vector2Int dir      = bike.dir;
-        Vector2Int pos      = bike.gridPos;
+        Vector2Int dir = bike.dir;
+        Vector2Int pos = bike.gridPos;
         Vector2Int straight = dir;
-        Vector2Int left     = new Vector2Int(-dir.y,  dir.x);
-        Vector2Int right    = new Vector2Int( dir.y, -dir.x);
-        Vector2Int[] cands  = { straight, left, right };
+        Vector2Int left = new Vector2Int(-dir.y, dir.x);
+        Vector2Int right = new Vector2Int(dir.y, -dir.x);
+        Vector2Int[] cands = { straight, left, right };
 
         state = EvaluateState(pos);
 
@@ -80,8 +80,8 @@ public class AIController : MonoBehaviour
         BikeController opp = NearestAliveOpponent();
         if (opp == null) return AIState.Survive;
 
-        float dist     = Vector2Int.Distance(pos, opp.gridPos);
-        int   oppSpace = FloodFill(opp.gridPos);
+        float dist = Vector2Int.Distance(pos, opp.gridPos);
+        int oppSpace = FloodFill(opp.gridPos);
 
         switch (personality)
         {
@@ -97,9 +97,9 @@ public class AIController : MonoBehaviour
 
             case Personality.Balanced:
             default:
-                if (mySpace < 20)            return AIState.Panic;
+                if (mySpace < 20) return AIState.Panic;
                 if (mySpace > oppSpace * 2f) return AIState.Trap;
-                if (dist < 12)               return AIState.Hunt;
+                if (dist < 12) return AIState.Hunt;
                 return AIState.Survive;
         }
     }
@@ -113,11 +113,11 @@ public class AIController : MonoBehaviour
 
         switch (state)
         {
-            case AIState.Panic:   return BestByFloodFill(pos, cands);
-            case AIState.Hunt:    return HuntDir(pos, cands, opp);
-            case AIState.Trap:    return TrapDir(pos, cands, opp);
+            case AIState.Panic: return BestByFloodFill(pos, cands);
+            case AIState.Hunt: return HuntDir(pos, cands, opp);
+            case AIState.Trap: return TrapDir(pos, cands, opp);
             case AIState.Survive:
-            default:              return DefensiveDir(pos, cands);
+            default: return DefensiveDir(pos, cands);
         }
     }
 
@@ -128,8 +128,8 @@ public class AIController : MonoBehaviour
     // Survive — flood fill minus heatmap danger
     Vector2Int DefensiveDir(Vector2Int pos, Vector2Int[] cands)
     {
-        Vector2Int best      = cands[0];
-        float      bestScore = float.MinValue;
+        Vector2Int best = cands[0];
+        float bestScore = float.MinValue;
 
         foreach (var d in cands)
         {
@@ -147,20 +147,20 @@ public class AIController : MonoBehaviour
     {
         if (opp == null) return DefensiveDir(pos, cands);
 
-        int        lookahead = (difficulty == Difficulty.Elite) ? 6 : 3;
-        Vector2Int target    = opp.gridPos + opp.dir * lookahead;
+        int lookahead = (difficulty == Difficulty.Elite) ? 6 : 3;
+        Vector2Int target = opp.gridPos + opp.dir * lookahead;
 
-        Vector2Int best      = cands[0];
-        float      bestScore = float.MinValue;
+        Vector2Int best = cands[0];
+        float bestScore = float.MinValue;
 
         foreach (var d in cands)
         {
             Vector2Int next = pos + d;
             if (!arena.InBounds(next) || arena.IsOccupied(next)) continue;
 
-            float space  =  FloodFill(next);
-            float aggro  = -Vector2Int.Distance(next, target);
-            float score  =  space * 0.4f + aggro * 3f;
+            float space = FloodFill(next);
+            float aggro = -Vector2Int.Distance(next, target);
+            float score = space * 0.4f + aggro * 3f;
 
             if (score > bestScore) { bestScore = score; best = d; }
         }
@@ -172,17 +172,17 @@ public class AIController : MonoBehaviour
     {
         if (opp == null) return DefensiveDir(pos, cands);
 
-        Vector2Int best      = cands[0];
-        float      bestScore = float.MinValue;
+        Vector2Int best = cands[0];
+        float bestScore = float.MinValue;
 
         foreach (var d in cands)
         {
             Vector2Int next = pos + d;
             if (!arena.InBounds(next) || arena.IsOccupied(next)) continue;
 
-            float mySpace  =  FloodFill(next);
+            float mySpace = FloodFill(next);
             float oppSpace = -FloodFill(opp.gridPos);
-            float score    =  mySpace * 0.5f + oppSpace * 2f;
+            float score = mySpace * 0.5f + oppSpace * 2f;
 
             if (score > bestScore) { bestScore = score; best = d; }
         }
@@ -192,8 +192,8 @@ public class AIController : MonoBehaviour
     // Panic — raw flood fill only
     Vector2Int BestByFloodFill(Vector2Int pos, Vector2Int[] cands)
     {
-        Vector2Int best      = cands[0];
-        int        bestScore = -1;
+        Vector2Int best = cands[0];
+        int bestScore = -1;
 
         foreach (var d in cands)
         {
@@ -216,7 +216,7 @@ public class AIController : MonoBehaviour
         if (!arena.InBounds(start) || arena.IsOccupied(start)) return 0;
 
         var visited = new HashSet<Vector2Int>();
-        var queue   = new Queue<Vector2Int>();
+        var queue = new Queue<Vector2Int>();
 
         queue.Enqueue(start);
         visited.Add(start);
@@ -224,9 +224,9 @@ public class AIController : MonoBehaviour
         while (queue.Count > 0 && visited.Count < cap)
         {
             Vector2Int cur = queue.Dequeue();
-            TryEnqueue(cur + Vector2Int.up,    visited, queue);
-            TryEnqueue(cur + Vector2Int.down,  visited, queue);
-            TryEnqueue(cur + Vector2Int.left,  visited, queue);
+            TryEnqueue(cur + Vector2Int.up, visited, queue);
+            TryEnqueue(cur + Vector2Int.down, visited, queue);
+            TryEnqueue(cur + Vector2Int.left, visited, queue);
             TryEnqueue(cur + Vector2Int.right, visited, queue);
         }
         return visited.Count;
@@ -257,11 +257,11 @@ public class AIController : MonoBehaviour
         {
             if (opp == null || !opp.IsAlive) continue;  // ✅ IsAlive confirmed in BikeController.cs
             for (int x = 0; x < w; x++)
-            for (int y = 0; y < h; y++)
-            {
-                float dist = Vector2Int.Distance(new Vector2Int(x, y), opp.gridPos);
-                heatmap[x, y] += Mathf.Max(0f, 8f - dist);
-            }
+                for (int y = 0; y < h; y++)
+                {
+                    float dist = Vector2Int.Distance(new Vector2Int(x, y), opp.gridPos);
+                    heatmap[x, y] += Mathf.Max(0f, 8f - dist);
+                }
         }
     }
 
@@ -295,8 +295,8 @@ public class AIController : MonoBehaviour
     {
         if (opponents == null || opponents.Length == 0) return null;
 
-        BikeController best     = null;
-        float          bestDist = float.MaxValue;
+        BikeController best = null;
+        float bestDist = float.MaxValue;
 
         foreach (var opp in opponents)
         {

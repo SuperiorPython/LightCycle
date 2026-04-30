@@ -23,6 +23,9 @@ public class TrailManager : MonoBehaviour
         // mark this cell as owned by this bike
         arena.SetOccupied(gridPos, true, ownerId);
 
+        // track it so ClearAll can free it later
+        cells.Add(gridPos);
+
         Vector3 world = arena.GridToWorld(gridPos);
         Instantiate(trailPrefab, world, Quaternion.identity, trailRoot);
     }
