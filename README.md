@@ -66,7 +66,6 @@ This section outlines how development will be split among the three team members
 **Primary focus: core game flow and structure**
 - Game over / win screen
 - Title screen & main menu
-- Arena variants and scaling
 - Match flow and state management
 - Polishing core mechanics
 
@@ -74,23 +73,23 @@ This section outlines how development will be split among the three team members
 
 ---
 
-### 🧑‍💻 Member 2 — AI Enhancements *(Placeholder)*
+### 🧑‍💻 Rickey — AI Enhancements
 - AI difficulty levels
 - Smarter pathfinding / prediction
 - Aggressive vs defensive AI behaviors
 - Personality-based AI styles
 
-> *(Details to be finalized)*
+> *Owner of AI difficulty and different personalities*
 
 ---
 
-### 🧑‍💻 Member 3 — Visuals & Polish *(Placeholder)*
+### 🧑‍💻 Tiara — Visuals & Polish
 - Visual effects (glow, trail effects)
 - UI polish and animations
 - Sound effects and music
 - Feedback on crashes and eliminations
 
-> *(Details to be finalized)*
+> *Owner of audio and visual effects*
 
 ---
 
