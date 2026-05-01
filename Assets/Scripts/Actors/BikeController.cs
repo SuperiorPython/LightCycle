@@ -22,6 +22,10 @@ public class BikeController : MonoBehaviour
     [Header("Timing")]
     public float ticksPerSecond = 18f;
 
+    [Header("Audio")]
+    public AudioClip crashSound;        // Drag your crash sound here
+    public float crashVolume = 0.7f;    // Adjust volume as needed
+
     // queued direction applied on tick (prevents jitter)
     Vector2Int pendingDir;
     bool hasPendingDir = false;
@@ -30,6 +34,19 @@ public class BikeController : MonoBehaviour
     bool alive = true;
     public bool IsAlive => alive;
 
+    // Optional: Cache audio source
+    private AudioSource audioSource;
+
+    void Awake()
+    {
+        // Add AudioSource if it doesn't exist
+        audioSource = GetComponent<AudioSource>();
+        if (audioSource == null && crashSound != null)
+        {
+            audioSource = gameObject.AddComponent<AudioSource>();
+            audioSource.playOnAwake = false;
+        }
+    }
 
     public void Respawn(Vector2Int startPos, Vector2Int startDir)
     {
@@ -148,10 +165,36 @@ public class BikeController : MonoBehaviour
         alive = false;
         enabled = false;
 
+        // Play crash sound ONLY if this is the player bike
+        if (isPlayer)
+        {
+            PlayCrashSound();
+        }
+
         OnCrashed?.Invoke(this);
 
         if (gameManager != null)
             gameManager.OnBikeCrashed(this, killerId);
+    }
+
+    void PlayCrashSound()
+    {
+        if (crashSound == null)
+        {
+            Debug.LogWarning($"No crash sound assigned to player bike");
+            return;
+        }
+
+        // Use existing AudioSource or create temporary one
+        if (audioSource != null)
+        {
+            audioSource.PlayOneShot(crashSound, crashVolume);
+        }
+        else
+        {
+            // Fallback: Play at world position
+            AudioSource.PlayClipAtPoint(crashSound, transform.position, crashVolume);
+        }
     }
 
     static float DirToAngle(Vector2Int d)
